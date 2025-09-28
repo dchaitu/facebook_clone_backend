@@ -1,40 +1,62 @@
 import graphene
 from graphene import ObjectType, Schema
-from graphene_django import DjangoObjectType, DjangoListField
-
 from fb_post.models import User, Group, Post, Comment, React
 
 
-class UserType(DjangoObjectType):
-    class Meta:
-        model = User
-        fields = '__all__'
+class UserType(ObjectType):
+    user_id = graphene.ID()
+    name = graphene.String()
+    profile_pic = graphene.String()
 
 
-class GroupType(DjangoObjectType):
-    class Meta:
-        model = Group
-        fields = '__all__'
+class GroupType(ObjectType):
+    id = graphene.ID()
+    name = graphene.String()
+    members = graphene.List(UserType)
 
 
-class PostType(DjangoObjectType):
-    class Meta:
-        model = Post
-        fields = '__all__'
+class ReactType(ObjectType):
+    reaction = graphene.String()
+    reacted_at = graphene.DateTime()
+    reacted_by = graphene.Field(UserType)
+    post = graphene.Field('fb_post.schema.PostType')
+    comment = graphene.Field('fb_post.schema.CommentType')
 
-class CommentType(DjangoObjectType):
-    class Meta:
-        model = Comment
-        fields = '__all__'
 
-class ReactType(DjangoObjectType):
-    class Meta:
-        model = React
-        fields = '__all__'
+class CommentType(ObjectType):
+    comment_id = graphene.ID()
+    content = graphene.String()
+    commented_at = graphene.DateTime()
+    commented_by = graphene.Field(UserType)
+    post = graphene.Field('fb_post.schema.PostType')
+    reply = graphene.Field('fb_post.schema.CommentType')
+    reactions = graphene.List(ReactType)
+    replies = graphene.List('fb_post.schema.CommentType')
+
+    def resolve_reactions(self, info):
+        return React.objects.filter(comment=self)
+
+    def resolve_replies(self, info):
+        return Comment.objects.filter(reply=self)
+
+
+class PostType(ObjectType):
+    post_id = graphene.ID()
+    content = graphene.String()
+    posted_at = graphene.DateTime()
+    posted_by = graphene.Field(UserType)
+    group = graphene.Field(GroupType)
+    comments = graphene.List(CommentType)
+    reactions = graphene.List(ReactType)
+
+    def resolve_comments(self, info):
+        return Comment.objects.filter(post=self)
+
+    def resolve_reactions(self, info):
+        return React.objects.filter(post=self)
 
 
 class Query(ObjectType):
-
     all_users = graphene.List(UserType)
     all_posts = graphene.List(PostType)
     all_comments = graphene.List(CommentType)
@@ -45,8 +67,8 @@ class Query(ObjectType):
     all_reacts_by_post = graphene.List(ReactType, post_id=graphene.Int(required=True))
     posts_by_user_with_comments_and_reactions = graphene.List(PostType, user_id=graphene.Int(required=True))
 
-
     user = graphene.Field(UserType, user_id=graphene.Int(required=True))
+
     def resolve_all_users(self, info):
         return User.objects.all()
 
@@ -73,5 +95,6 @@ class Query(ObjectType):
 
     def resolve_posts_by_user_with_comments_and_reactions(self, info, user_id):
         return Post.objects.filter(posted_by=user_id).prefetch_related('commenter', 'reacted_to_post')
+
 
 schema = Schema(query=Query)
