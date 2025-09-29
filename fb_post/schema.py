@@ -1,5 +1,5 @@
 import graphene
-from graphene import ObjectType, Schema
+from graphene import ObjectType, Schema, Mutation
 from fb_post.models import User, Group, Post, Comment, React
 
 
@@ -97,4 +97,68 @@ class Query(ObjectType):
         return Post.objects.filter(posted_by=user_id).prefetch_related('commenter', 'reacted_to_post')
 
 
-schema = Schema(query=Query)
+# User Mutations
+class CreateUser(Mutation):
+    class Arguments:
+        name = graphene.String(required=True)
+        profile_pic = graphene.String(required=True)
+
+    user = graphene.Field(UserType)
+
+    @classmethod
+    def mutate(cls, root, info, name, profile_pic):
+        user = User.objects.create(
+            name=name,
+            profile_pic=profile_pic
+        )
+        return CreateUser(user=user)
+
+
+class UpdateUser(Mutation):
+    class Arguments:
+        user_id = graphene.ID(required=True)
+        name = graphene.String()
+        profile_pic = graphene.String()
+
+    user = graphene.Field(UserType)
+
+    @classmethod
+    def mutate(cls, root, info, user_id, **kwargs):
+        try:
+            user = User.objects.get(user_id=user_id)
+            for key, value in kwargs.items():
+                if value is not None:
+                    setattr(user, key, value)
+            user.save()
+            return UpdateUser(user=user)
+        except User.DoesNotExist:
+            raise Exception("User not found")
+
+
+class DeleteUser(Mutation):
+    class Arguments:
+        user_id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+
+    @classmethod
+    def mutate(cls, root, info, user_id):
+        try:
+            user = User.objects.get(user_id=user_id)
+            user.delete()
+            return DeleteUser(success=True)
+        except User.DoesNotExist:
+            raise Exception("User not found")
+
+
+class UserMutations(ObjectType):
+    create_user = CreateUser.Field()
+    update_user = UpdateUser.Field()
+    delete_user = DeleteUser.Field()
+
+
+class Mutation(UserMutations, ObjectType):
+    pass
+
+
+schema = Schema(query=Query, mutation=Mutation)
